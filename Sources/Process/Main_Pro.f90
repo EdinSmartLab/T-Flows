@@ -116,6 +116,7 @@
   call Grid_Mod_Calculate_Face_Geometry(grid)
   call Grid_Mod_Find_Nodes_Cells(grid)         ! for Lagrangian particle track
   call Grid_Mod_Find_Periodic_Faces(grid)      ! for Lagrangian particle track
+STOP
 
   ! Allocate memory for linear systems of equations
   ! (You need face geomtry for this step)

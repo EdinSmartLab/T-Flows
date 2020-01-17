@@ -7,8 +7,9 @@
 !---------------------------------[Arguments]----------------------------------!
   type(Grid_Type) :: grid
 !-----------------------------------[Locals]-----------------------------------!
-  integer :: c, c2, ln, n, s   ! counters
+  integer :: c, c1, c2, ln1, ln2, n1, n2, s, n, per   ! counters
   integer :: max_n_cells       ! max number of cells surrounding a node
+  real    :: px, py, pz, x1, y1, z1, x2, y2, z2
 
 ! Just for checking, erase this later
 ! integer :: lc
@@ -20,76 +21,186 @@
   allocate(grid % nodes_n_cells(1:n))
   grid % nodes_n_cells(:) = 0
 
+  ! Take aliases
+  px = grid % per_x
+  py = grid % per_y
+  pz = grid % per_z
+
+!  ! This information is missing :-(
+!  do s = 1, grid % n_faces
+!    c1 = grid % faces_c(1,s)
+!    c2 = grid % faces_c(2,s)
+!    if(c2 < 0) then
+!      grid % cells_n_nodes(c2) = grid % faces_n_nodes(s)
+!      do n = 1, grid % cells_n_nodes(c2)
+!        grid % cells_n(n,c2) = grid % faces_n(n,s)
+!      end do
+!    end if
+!  end do
+
   !--------------------------------------------------------!
   !   Find maximum number of cells surrounding each node   !
   !     (use only inside cells at this point in time)      !
   !--------------------------------------------------------!
 
-  ! Inside cells
-  do c = 1, grid % n_cells
-    do ln = 1, grid % cells_n_nodes(c)  ! local node number
-      n = grid % cells_n(ln, c)         ! global node number
-
-      ! Increase number of cells surrounding the this node by one
-      grid % nodes_n_cells(n) = grid % nodes_n_cells(n) + 1
+  ! All faces
+  do s = 1, grid % n_faces
+    c1 = grid % faces_c(1,s)
+    c2 = grid % faces_c(2,s)
+    do ln1 = 1, grid % cells_n_nodes(c1)    ! local node number 1
+      n1 = grid % cells_n(ln1, c1)          ! global node number 1
+      x1 = grid % xn(n1)
+      y1 = grid % yn(n1)
+      z1 = grid % zn(n1)
+      do ln2 = 1, grid % cells_n_nodes(c2)  ! local node number 1
+        n2 = grid % cells_n(ln2, c2)        ! global node number 1
+        x2 = grid % xn(n2)
+        y2 = grid % yn(n2)
+        z2 = grid % zn(n2)
+        if(Math_Mod_Distance_Squared(x1, y1, z1, x2, y2, z2) < PICO) then
+          grid % nodes_n_cells(n1) = grid % nodes_n_cells(n1) + 2
+          grid % nodes_n_cells(n2) = grid % nodes_n_cells(n2) + 2
+        end if
+        if( ( (abs(px) > TINY) .and.                                        &
+              (Math_Mod_Distance_Squared(x1,y1,z1,x2+px,y2,z2) < PICO .or.  &
+               Math_Mod_Distance_Squared(x1,y1,z1,x2-px,y2,z2) < PICO)      &
+            ) .or.                                                          &
+            ( (abs(py) > TINY) .and.                                        &
+              (Math_Mod_Distance_Squared(x1,y1,z1, x2,y2+py,z2) < PICO .or. &
+               Math_Mod_Distance_Squared(x1,y1,z1, x2,y2-py,z2) < PICO)     &
+            ) .or.                                                          &
+            ( (abs(pz) > TINY) .and.                                        &
+              (Math_Mod_Distance_Squared(x1,y1,z1, x2,y2,z2+pz) < PICO .or. &
+               Math_Mod_Distance_Squared(x1,y1,z1, x2,y2,z2-pz) < PICO)     &
+            ) ) then
+          grid % nodes_n_cells(n1) = grid % nodes_n_cells(n1) + 2
+          grid % nodes_n_cells(n2) = grid % nodes_n_cells(n2) + 2
+        end if
+      end do
     end do
   end do
 
-  ! Boundary cells
-  do s = 1, grid % n_bnd_cells
-    c2 = grid % faces_c(2, s)
-    if(c2 >= 0) then
-      print *, 'PANIC!  Something is very wrong in Find_Nodes_Cells'
-    end if
-    do ln = 1, grid % faces_n_nodes(s)  ! local face number
-      n = grid % faces_n(ln, s)         ! global node number
-
-      ! Increase number of cells surrounding the this node by one
-      grid % nodes_n_cells(n) = grid % nodes_n_cells(n) + 1
-    end do
-  end do
+! ! Inside cells
+! do c = 1, grid % n_cells
+!   do ln = 1, grid % cells_n_nodes(c)  ! local node number
+!     n = grid % cells_n(ln, c)         ! global node number
+!
+!     ! Increase number of cells surrounding the this node by one
+!     grid % nodes_n_cells(n) = grid % nodes_n_cells(n) + 1
+!   end do
+! end do
+!
+! ! Boundary cells
+! do s = 1, grid % n_bnd_cells
+!   c2 = grid % faces_c(2, s)
+!   if(c2 >= 0) then
+!     print *, 'PANIC!  Something is very wrong in Find_Nodes_Cells'
+!   end if
+!   do ln = 1, grid % faces_n_nodes(s)  ! local face number
+!     n = grid % faces_n(ln, s)         ! global node number
+!
+!     ! Increase number of cells surrounding the this node by one
+!     grid % nodes_n_cells(n) = grid % nodes_n_cells(n) + 1
+!   end do
+! end do
 
   max_n_cells = maxval(grid % nodes_n_cells)
+  write(100, *) 'max_n_cells = ', max_n_cells
 
   ! Allocate memory for cells surrounding each node
-  n = grid % n_nodes
-  allocate(grid % nodes_c(1:max_n_cells, 1:n))
+  allocate(grid % nodes_c(1:max_n_cells, 1:grid % n_nodes))
 
   !----------------------------------------------------------!
   !   Now you can really store the cells surrounding nodes   !
   !----------------------------------------------------------!
   grid % nodes_n_cells(:) = 0  ! re-initialize the cell count
 
-  ! Inside cells
-  do c = 1, grid % n_cells
-    do ln = 1, grid % cells_n_nodes(c)  ! local node number
-      n = grid % cells_n(ln, c)         ! global node number
-
-      ! Increase number of cells surrounding the this node by one ...
-      grid % nodes_n_cells(n) = grid % nodes_n_cells(n) + 1
-
-      ! ... and store the current cell
-      grid % nodes_c(grid % nodes_n_cells(n), n) = c
-    end do
-  end do
-
-  ! Boundary cells
-  do s = 1, grid % n_bnd_cells
+  ! All faces
+  do s = 1, grid % n_faces
+    c1 = grid % faces_c(1,s)
     c2 = grid % faces_c(2,s)
-    do ln = 1, grid % faces_n_nodes(s)  ! local face number
-      n = grid % faces_n(ln, s)         ! global node number
+    do ln1 = 1, grid % cells_n_nodes(c1)    ! local node number 1
+      n1 = grid % cells_n(ln1, c1)          ! global node number 1
+      x1 = grid % xn(n1)
+      y1 = grid % yn(n1)
+      z1 = grid % zn(n1)
 
-      ! Increase number of cells surrounding the this node by one ...
-      grid % nodes_n_cells(n) = grid % nodes_n_cells(n) + 1
+      do ln2 = 1, grid % cells_n_nodes(c2)  ! local node number 1
+        n2 = grid % cells_n(ln2, c2)        ! global node number 1
+        x2 = grid % xn(n2)
+        y2 = grid % yn(n2)
+        z2 = grid % zn(n2)
 
-      ! ... and store the current cell
-      grid % nodes_c(grid % nodes_n_cells(n), n) = c2
+        if(Math_Mod_Distance_Squared(x1, y1, z1, x2, y2, z2) < PICO) then
+          grid % nodes_n_cells(n1) = grid % nodes_n_cells(n1) + 1
+          grid % nodes_c(grid % nodes_n_cells(n1), n1) = c1
+          grid % nodes_n_cells(n1) = grid % nodes_n_cells(n1) + 1
+          grid % nodes_c(grid % nodes_n_cells(n1), n1) = c2
+          grid % nodes_n_cells(n2) = grid % nodes_n_cells(n2) + 1
+          grid % nodes_c(grid % nodes_n_cells(n2), n2) = c1
+          grid % nodes_n_cells(n2) = grid % nodes_n_cells(n2) + 1
+          grid % nodes_c(grid % nodes_n_cells(n2), n2) = c2
+        end if
 
-      ! Also store boundary face for boundary cell
-      grid % cells_bnd_face(c2) = s
+        if( ( (abs(px) > TINY) .and.                                        &
+              (Math_Mod_Distance_Squared(x1,y1,z1,x2+px,y2,z2) < PICO .or.  &
+               Math_Mod_Distance_Squared(x1,y1,z1,x2-px,y2,z2) < PICO)      &
+            ) .or.                                                          &
+            ( (abs(py) > TINY) .and.                                        &
+              (Math_Mod_Distance_Squared(x1,y1,z1, x2,y2+py,z2) < PICO .or. &
+               Math_Mod_Distance_Squared(x1,y1,z1, x2,y2-py,z2) < PICO)     &
+            ) .or.                                                          &
+            ( (abs(pz) > TINY) .and.                                        &
+              (Math_Mod_Distance_Squared(x1,y1,z1, x2,y2,z2+pz) < PICO .or. &
+               Math_Mod_Distance_Squared(x1,y1,z1, x2,y2,z2-pz) < PICO)     &
+            ) ) then
+            grid % nodes_n_cells(n1) = grid % nodes_n_cells(n1) + 1
+            grid % nodes_c(grid % nodes_n_cells(n1), n1) = c1
+            grid % nodes_n_cells(n1) = grid % nodes_n_cells(n1) + 1
+            grid % nodes_c(grid % nodes_n_cells(n1), n1) = c2
+            grid % nodes_n_cells(n2) = grid % nodes_n_cells(n2) + 1
+            grid % nodes_c(grid % nodes_n_cells(n2), n2) = c1
+            grid % nodes_n_cells(n2) = grid % nodes_n_cells(n2) + 1
+            grid % nodes_c(grid % nodes_n_cells(n2), n2) = c2
+        end if
+
+      end do
     end do
   end do
 
+! ! Inside cells
+! do c = 1, grid % n_cells
+!   do ln = 1, grid % cells_n_nodes(c)  ! local node number
+!     n = grid % cells_n(ln, c)         ! global node number
+!
+!     ! Increase number of cells surrounding the this node by one ...
+!     grid % nodes_n_cells(n) = grid % nodes_n_cells(n) + 1
+!
+!     ! ... and store the current cell
+!     grid % nodes_c(grid % nodes_n_cells(n), n) = c
+!   end do
+! end do
+!
+! ! Boundary cells
+! do s = 1, grid % n_bnd_cells
+!   c2 = grid % faces_c(2,s)
+!   do ln = 1, grid % faces_n_nodes(s)  ! local face number
+!     n = grid % faces_n(ln, s)         ! global node number
+!
+!     ! Increase number of cells surrounding the this node by one ...
+!     grid % nodes_n_cells(n) = grid % nodes_n_cells(n) + 1
+!
+!     ! ... and store the current cell
+!     grid % nodes_c(grid % nodes_n_cells(n), n) = c2
+!
+!     ! Also store boundary face for boundary cell
+!     grid % cells_bnd_face(c2) = s
+!   end do
+! end do
+
+  do n = 1, grid % n_nodes
+    write(100, '(3f12.5, i8, 8i8)') grid % xn(n), grid % yn(n), grid % zn(n), grid % nodes_n_cells(n), grid % nodes_c(1:8, n)
+  end do
 ! ! Just for checking, erase this later
 ! max_del = -HUGE
 ! min_del = +HUGE
