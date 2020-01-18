@@ -66,23 +66,27 @@
   end do
 
   ! Extend to 2nd neighbours for periodic faces
-  do ps = 1, grid % n_per_faces
-    s = grid % per_faces(ps)      ! take periodic face number
+  do s = 1, grid % n_faces
 
     c1 = grid % faces_c(1,s)
     c2 = grid % faces_c(2,s)
-!   faces_n_cells(s) = cells_n_cells(c1) + cells_n_cells(n2)
-    work(1:2*max_n_cells) = HUGE_INT
-    work(                  1:cells_n_cells(c1)                  )   &
-      = cells_c(1:cells_n_cells(c1),c1)
-    work(cells_n_cells(c1)+1:cells_n_cells(c1)+cells_n_cells(c2))   &
-      = cells_c(1:cells_n_cells(c2),c2)
-    n = cells_n_cells(c1) + cells_n_cells(c2)
-    write(302, '(a1,i5,a1,i5,a1,12i9)') '(',c1,',',c2,')', work(1:n)
-    call Sort_Mod_Unique_Int(n, work(1:n))
-    write(303, '(a1,i5,a1,i5,a1,12i9)') '(',c1,',',c2,')', work(1:n)
-    faces_n_cells(s) = n
-    faces_c (1:n, s) = work(1:n)
+
+    if( Math_Mod_Distance(grid % xc(c1), grid % yc(c1), grid % zc(c1),    &
+                          grid % xc(c2), grid % yc(c2), grid % zc(c2))    &
+        >                                                                 &
+        2.0 * sqrt(grid % dx(s)**2 + grid % dy(s)**2 + grid % dz(s)**2) ) then
+      work(1:2*max_n_cells) = HUGE_INT                                          
+      n1 = cells_n_cells(c1)                                                    
+      n2 = cells_n_cells(c2)                                                    
+      work(   1:n1   ) = cells_c(1:n1,c1)                                       
+      work(n1+1:n1+n2) = cells_c(1:n2,c2)                                       
+      n = n1 + n2                                                               
+      write(302, '(a1,i5,a1,i5,a1,12i9)') '(',c1,',',c2,')', work(1:n)          
+      call Sort_Mod_Unique_Int(n, work(1:n))                                    
+      write(303, '(a1,i5,a1,i5,a1,12i9)') '(',c1,',',c2,')', work(1:n)          
+      faces_n_cells(s) = n                                                      
+      faces_c (1:n, s) = work(1:n)                                              
+    end if
   end do
   deallocate(cells_c)
   deallocate(cells_n_cells)
