@@ -7,16 +7,85 @@
 !---------------------------------[Arguments]----------------------------------!
   type(Grid_Type) :: grid
 !-----------------------------------[Locals]-----------------------------------!
-  integer              :: c, c1, c2, ln1, ln2, n1, n2, s, n, per   ! counters
+  integer              :: c, lc1, lc2, c1, c2, ln1, ln2, n1, n2, s, n, ps   ! counters
   integer              :: max_n_cells       ! max number of cells around nodes
   real                 :: lx, ly, lz, x1, y1, z1, x2, y2, z2
   logical              :: px, py, pz
-  integer, allocatable :: tmp_nodes_c(:,:)
 
-! Just for checking, erase this later
-! integer :: lc
-! real    :: xn, xc, yn, yc, zn, zc, max_del, min_del, del
+  integer, allocatable :: nodes_c(:,:)      ! local storage of nodes' cells
+
+  integer, allocatable :: cells_n_cells(:)  ! local storage of cells neighbrs
+  integer, allocatable :: cells_c    (:,:)
+
+  integer, allocatable :: faces_n_cells(:)  ! local storage for faces' cells
+  integer, allocatable :: faces_c(:,:)      ! can hold 1st or 2nd neighbours
+
+  integer              :: work(128)
 !==============================================================================!
+
+  ! Determine cells neighbours
+  allocate(cells_n_cells(-grid % n_bnd_cells:grid % n_cells))
+  allocate(faces_n_cells( grid % n_faces));  faces_n_cells(:) = 0
+
+  ! Count maximum number of cells' neighbours
+  cells_n_cells(:) = 0
+  do s = 1, grid % n_faces
+    c1 = grid % faces_c(1,s)
+    c2 = grid % faces_c(2,s)
+    cells_n_cells(c1) = cells_n_cells(c1) + 1
+    cells_n_cells(c2) = cells_n_cells(c2) + 1
+  end do
+
+  ! Allocate memory for cells' neighbours
+  max_n_cells = maxval(cells_n_cells(:))
+  allocate(cells_c(max_n_cells, -grid % n_bnd_cells:grid % n_cells))
+  cells_c(:,:) = 0
+
+  ! Store cells' neighbours
+  cells_n_cells(:) = 0
+  do s = 1, grid % n_faces
+    c1 = grid % faces_c(1,s)
+    c2 = grid % faces_c(2,s)
+    cells_n_cells(c1) = cells_n_cells(c1) + 1
+    cells_n_cells(c2) = cells_n_cells(c2) + 1
+    cells_c(cells_n_cells(c1), c1) = c2
+    cells_c(cells_n_cells(c2), c2) = c1
+  end do
+
+  do c = 1, grid % n_cells
+    write(301, '(9i9)') c, cells_c(1:max_n_cells, c)
+  end do
+
+  allocate(faces_c(2*max_n_cells, grid % n_faces))
+  do s = 1, grid % n_faces
+    c1 = grid % faces_c(1,s)
+    c2 = grid % faces_c(2,s)
+    faces_n_cells(s) = 2
+    faces_c(1, s) = c1
+    faces_c(2, s) = c2
+  end do
+
+  ! Extend to 2nd neighbours for periodic faces
+  do ps = 1, grid % n_per_faces
+    s = grid % per_faces(ps)      ! take periodic face number
+
+    c1 = grid % faces_c(1,s)
+    c2 = grid % faces_c(2,s)
+!   faces_n_cells(s) = cells_n_cells(c1) + cells_n_cells(n2)
+    work(1:2*max_n_cells) = HUGE_INT
+    work(                  1:cells_n_cells(c1)                  )   &
+      = cells_c(1:cells_n_cells(c1),c1)
+    work(cells_n_cells(c1)+1:cells_n_cells(c1)+cells_n_cells(c2))   &
+      = cells_c(1:cells_n_cells(c2),c2)
+    n = cells_n_cells(c1) + cells_n_cells(c2)
+    write(302, '(a1,i5,a1,i5,a1,12i9)') '(',c1,',',c2,')', work(1:n)
+    call Sort_Mod_Unique_Int(n, work(1:n))
+    write(303, '(a1,i5,a1,i5,a1,12i9)') '(',c1,',',c2,')', work(1:n)
+    faces_n_cells(s) = n
+    faces_c (1:n, s) = work(1:n)
+  end do
+  deallocate(cells_c)
+  deallocate(cells_n_cells)
 
   ! Allocate memory for node coordinates
   n = grid % n_nodes
@@ -50,8 +119,10 @@
 
   ! All faces
   do s = 1, grid % n_faces
-    c1 = grid % faces_c(1,s)
-    c2 = grid % faces_c(2,s)
+    do lc1 = 1, faces_n_cells(s)
+      do lc2 = lc1+1, faces_n_cells(s)
+        c1 = faces_c(lc1,s)
+        c2 = faces_c(lc2,s)
     do ln1 = 1, grid % cells_n_nodes(c1)    ! local node number 1
       n1 = grid % cells_n(ln1, c1)          ! global node number 1
       x1 = grid % xn(n1)
@@ -98,6 +169,8 @@
         end if
       end do
     end do
+      end do
+    end do
   end do
 
 ! ! Inside cells
@@ -128,7 +201,7 @@
   write(100, *) 'max_n_cells(1) = ', max_n_cells
 
   ! Allocate memory for cells surrounding each node
-  allocate(tmp_nodes_c(1:max_n_cells, 1:grid % n_nodes))
+  allocate(nodes_c(1:max_n_cells, 1:grid % n_nodes))
 
   !----------------------------------------------------------!
   !   Now you can really store the cells surrounding nodes   !
@@ -137,8 +210,10 @@
 
   ! All faces
   do s = 1, grid % n_faces
-    c1 = grid % faces_c(1,s)
-    c2 = grid % faces_c(2,s)
+    do lc1 = 1, faces_n_cells(s)
+      do lc2 = lc1+1, faces_n_cells(s)
+        c1 = faces_c(lc1,s)
+        c2 = faces_c(lc2,s)
     do ln1 = 1, grid % cells_n_nodes(c1)    ! local node number 1
       n1 = grid % cells_n(ln1, c1)          ! global node number 1
       x1 = grid % xn(n1)
@@ -153,13 +228,13 @@
 
         if(Math_Mod_Distance_Squared(x1, y1, z1, x2, y2, z2) < PICO) then
           grid % nodes_n_cells(n1) = grid % nodes_n_cells(n1) + 1
-          tmp_nodes_c(grid % nodes_n_cells(n1), n1) = c1
+          nodes_c(grid % nodes_n_cells(n1), n1) = c1
           grid % nodes_n_cells(n1) = grid % nodes_n_cells(n1) + 1
-          tmp_nodes_c(grid % nodes_n_cells(n1), n1) = c2
+          nodes_c(grid % nodes_n_cells(n1), n1) = c2
           grid % nodes_n_cells(n2) = grid % nodes_n_cells(n2) + 1
-          tmp_nodes_c(grid % nodes_n_cells(n2), n2) = c1
+          nodes_c(grid % nodes_n_cells(n2), n2) = c1
           grid % nodes_n_cells(n2) = grid % nodes_n_cells(n2) + 1
-          tmp_nodes_c(grid % nodes_n_cells(n2), n2) = c2
+          nodes_c(grid % nodes_n_cells(n2), n2) = c2
         end if
 
         if( px .neqv. py .neqv. pz ) then  ! only one periodic direction
@@ -176,13 +251,13 @@
                  Math_Mod_Distance_Squared(x1,y1,z1, x2,y2,z2-lz) < PICO)     &
               ) ) then
             grid % nodes_n_cells(n1) = grid % nodes_n_cells(n1) + 1
-            tmp_nodes_c(grid % nodes_n_cells(n1), n1) = c1
+            nodes_c(grid % nodes_n_cells(n1), n1) = c1
             grid % nodes_n_cells(n1) = grid % nodes_n_cells(n1) + 1
-            tmp_nodes_c(grid % nodes_n_cells(n1), n1) = c2
+            nodes_c(grid % nodes_n_cells(n1), n1) = c2
             grid % nodes_n_cells(n2) = grid % nodes_n_cells(n2) + 1
-            tmp_nodes_c(grid % nodes_n_cells(n2), n2) = c1
+            nodes_c(grid % nodes_n_cells(n2), n2) = c1
             grid % nodes_n_cells(n2) = grid % nodes_n_cells(n2) + 1
-            tmp_nodes_c(grid % nodes_n_cells(n2), n2) = c2
+            nodes_c(grid % nodes_n_cells(n2), n2) = c2
           end if
         end if
         if( px .and. py .and. .not. pz ) then  ! x and y are periodic
@@ -195,18 +270,22 @@
              Math_Mod_Distance_Squared(x1,y1,z1,x2-lx,y2+ly,z2) < PICO .or.  &
              Math_Mod_Distance_Squared(x1,y1,z1,x2-lx,y2-ly,z2) < PICO) then
             grid % nodes_n_cells(n1) = grid % nodes_n_cells(n1) + 1
-            tmp_nodes_c(grid % nodes_n_cells(n1), n1) = c1
+            nodes_c(grid % nodes_n_cells(n1), n1) = c1
             grid % nodes_n_cells(n1) = grid % nodes_n_cells(n1) + 1
-            tmp_nodes_c(grid % nodes_n_cells(n1), n1) = c2
+            nodes_c(grid % nodes_n_cells(n1), n1) = c2
             grid % nodes_n_cells(n2) = grid % nodes_n_cells(n2) + 1
-            tmp_nodes_c(grid % nodes_n_cells(n2), n2) = c1
+            nodes_c(grid % nodes_n_cells(n2), n2) = c1
             grid % nodes_n_cells(n2) = grid % nodes_n_cells(n2) + 1
-            tmp_nodes_c(grid % nodes_n_cells(n2), n2) = c2
+            nodes_c(grid % nodes_n_cells(n2), n2) = c2
           end if
         end if
       end do
     end do
+      end do
+    end do
   end do
+  deallocate(faces_n_cells)  ! local faces_n_cells not used beyond this point
+  deallocate(faces_c)        ! local faces_c not used beyond this point
 
 ! ! Inside cells
 ! do c = 1, grid % n_cells
@@ -217,7 +296,7 @@
 !     grid % nodes_n_cells(n) = grid % nodes_n_cells(n) + 1
 !
 !     ! ... and store the current cell
-!     tmp_nodes_c(grid % nodes_n_cells(n), n) = c
+!     nodes_c(grid % nodes_n_cells(n), n) = c
 !   end do
 ! end do
 !
@@ -231,7 +310,7 @@
 !     grid % nodes_n_cells(n) = grid % nodes_n_cells(n) + 1
 !
 !     ! ... and store the current cell
-!     tmp_nodes_c(grid % nodes_n_cells(n), n) = c2
+!     nodes_c(grid % nodes_n_cells(n), n) = c2
 !
 !     ! Also store boundary face for boundary cell
 !     grid % cells_bnd_face(c2) = s
@@ -240,7 +319,7 @@
 
   do n = 1, grid % n_nodes
     call Sort_Mod_Unique_Int( grid % nodes_n_cells(n),  &
-                tmp_nodes_c(1:grid % nodes_n_cells(n), n) )
+                nodes_c(1:grid % nodes_n_cells(n), n) )
   end do
 
   max_n_cells = maxval(grid % nodes_n_cells)
@@ -252,7 +331,7 @@
 
   do n = 1, grid % n_nodes
     grid % nodes_c(1:grid % nodes_n_cells(n), n) = &
-       tmp_nodes_c(1:grid % nodes_n_cells(n), n)
+       nodes_c(1:grid % nodes_n_cells(n), n)
   end do
 
   do n = 1, grid % n_nodes
@@ -262,30 +341,7 @@
           grid % zn(n),                                           &
           grid % nodes_n_cells(n), grid % nodes_c(1:max_n_cells, n)
   end do
-! ! Just for checking, erase this later
-! max_del = -HUGE
-! min_del = +HUGE
-!
-! do n = 1, grid % n_nodes
-!   do lc = 1, grid % nodes_n_cells(n)  ! local cell number
-!     c = tmp_nodes_c(lc, n)         ! global cell number
-!
-!     xn = grid % xn(n)
-!     yn = grid % yn(n)
-!     zn = grid % zn(n)
-!
-!     xc = grid % xc(c)
-!     yc = grid % yc(c)
-!     zc = grid % zc(c)
-!
-!     del = sqrt( (xn-xc)**2 + (yn-yc)**2 + (zn-zc)**2 )
-!
-!     min_del = min(del, min_del)
-!     max_del = max(del, max_del)
-!   end do
-! end do
-!
-! print *, '# Checking: min and max del: ', min_del, max_del
-! stop
+
+  deallocate(nodes_c)
 
   end subroutine
