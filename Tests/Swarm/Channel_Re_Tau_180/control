@@ -5,13 +5,13 @@ Prologue
  HEAT_TRANSFER   no
 
  TIME_STEP                                   0.5
- NUMBER_OF_TIME_STEPS                        340050
+ NUMBER_OF_TIME_STEPS                        600000
  STARTING_TIME_STEP_FOR_STATISTICS           2000
  STARTING_TIME_STEP_FOR_SWARM_STATISTICS     340015
 
- RESULTS_SAVE_INTERVAL     100000
- SWARM_SAVE_INTERVAL       50
- BACKUP_SAVE_INTERVAL      100000
+ RESULTS_SAVE_INTERVAL     20
+ SWARM_SAVE_INTERVAL       20
+ BACKUP_SAVE_INTERVAL      20
 
  LOAD_BACKUP_NAME          chan-ts340000.backup
 
@@ -31,10 +31,11 @@ Prologue
 # Swarm related
 #----------------
 
+# GRAVITATIONAL_VECTOR              0 0 -9.81
  SWARM_DIAMETER                     1.8E-03
  SWARM_DENSITY                      1.00e3
  NUMBER_OF_SWARM_SUB_STEPS          50
- NUMBER_OF_PARTICLES                64
+ NUMBER_OF_PARTICLES                10
  SWARM_COEFFICIENT_OF_RESTITUTION   1.0
 
 #-------------------
@@ -81,6 +82,6 @@ Prologue
 #---------------------
   BOUNDARY_CONDITION    wall
 
-    TYPE                wall_flux
+    TYPE                wall
     VARIABLES           u     v     w     q
     VALUES              0.0   0.0   0.0   0.1
