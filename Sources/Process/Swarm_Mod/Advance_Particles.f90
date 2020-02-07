@@ -1,5 +1,5 @@
 !==============================================================================!
-  subroutine Swarm_Mod_Advance_Particles(swarm, turb, n, n_stat_p)
+  subroutine Swarm_Mod_Advance_Particles(swarm, turb, n)
 !------------------------------------------------------------------------------!
 !   Advances all particles in the swarm.                                       !
 !------------------------------------------------------------------------------!
@@ -8,7 +8,6 @@
   type(Swarm_Type), target :: swarm
   type(Turb_Type),  target :: turb
   integer                  :: n          ! current time step
-  integer                  :: n_stat_p   ! starting time for swarm statistics
 !-----------------------------------[Locals]-----------------------------------!
   type(Grid_Type),     pointer :: grid
   type(Field_Type),    pointer :: flow
@@ -71,7 +70,7 @@
           call Swarm_Mod_Check_Periodicity(swarm, k, n_parts_in_buffers)
 
           ! Gathering swarm statistics  
-          call Swarm_Mod_Calculate_Mean(swarm, k, n, n_stat_p)
+          call Swarm_Mod_Calculate_Mean(swarm, k, n)
 
         end if  ! in this processor
       end if    ! deposited or escaped
