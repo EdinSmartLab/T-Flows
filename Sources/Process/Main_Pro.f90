@@ -53,7 +53,6 @@
   integer               :: sc_cr           ! system clock count rate
   integer               :: sc_ini, sc_cur  ! system clock start and end rate
   real                  :: wt_max
-  character(len=80)     :: name_save
 !==============================================================================!
 
   ! Initialize program profler
@@ -334,10 +333,11 @@
       call Backup_Mod_Save(flow, swarm, turb, mult, n, n_stat)
     end if
 
-    ! Is it time to save results for post-processing
-    if(save_now           .or.  &
-       exit_now           .or.  &
-       mod(n, rsi) .eq. 0 .or.  &
+    ! Is it time to save results for post-processing?
+    if(save_now            .or.  &
+       exit_now            .or.  &
+       mod(n, rsi) .eq.  0 .or.  &
+    !   mod(n, prsi) .eq. 0 .or.  &
        real(sc_cur-sc_ini)/real(sc_cr) > wt_max) then
       call Comm_Mod_Wait
       call Save_Results(flow, turb, mult, swarm, n, .true.)   ! save inside
@@ -358,6 +358,11 @@
       ! Write results in user-customized format
       call User_Mod_Save_Results(flow, turb, mult, swarm, n)
     end if
+   
+    if(mod(n, prsi) .eq. 0) then 
+      ! Write swarm results in user-customized format
+      call User_Mod_Save_Swarm(flow, turb, mult, swarm, n)
+    end if 
 
     if(save_now) then
       if(this_proc < 2) then
