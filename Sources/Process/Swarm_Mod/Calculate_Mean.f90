@@ -1,5 +1,5 @@
 !==============================================================================!
-  subroutine Swarm_Mod_Calculate_Mean(swarm, k, n, n_stat_p)
+  subroutine Swarm_Mod_Calculate_Mean(swarm, k, n)
 !------------------------------------------------------------------------------!
 !   Calculates particle time averaged velocity                                 !
 !------------------------------------------------------------------------------!
@@ -7,16 +7,20 @@
 !---------------------------------[Arguments]----------------------------------!
   type(Swarm_Type), target :: swarm
   integer                  :: k
-  integer                  :: n_stat_p
   integer                  :: n
 !-----------------------------------[Locals]-----------------------------------!
   type(Field_Type),    pointer :: flow
   type(Grid_Type),     pointer :: grid
   type(Particle_Type), pointer :: part
   integer                      :: c, m
+  integer                      :: n_stat_p
 !==============================================================================!
 
   if(.not. swarm % swarm_statistics) return
+
+  ! Fetch starting time step for swarm statistics
+  call Control_Mod_Starting_Time_Step_For_Swarm_Statistics &
+       (n_stat_p, verbose=.true.)
 
   ! Take aliases
   grid => swarm % pnt_grid
