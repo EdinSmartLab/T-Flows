@@ -1,28 +1,27 @@
 !==============================================================================!
-  subroutine User_Mod_End_Of_Time_Step(flow, turb, swarm, n_stat_p, n, time)
+  subroutine User_Mod_End_Of_Time_Step(flow, turb, mult, swarm, n, time)
 !------------------------------------------------------------------------------!
 !   This function is called at the end of time step.                           !
 !------------------------------------------------------------------------------!
 !----------------------------------[Modules]-----------------------------------!
   use Grid_Mod,  only: Grid_Type
-  use Field_Mod, only: Field_Type,  &
-                       viscosity, density, conductivity, heat_transfer
+  use Field_Mod, only: Field_Type
   use Var_Mod,   only: Var_Type
   use Const_Mod, only: PI
   use Comm_Mod,  only: Comm_Mod_Global_Max_Real, this_proc
 !------------------------------------------------------------------------------!
   implicit none
 !---------------------------------[Arguments]----------------------------------!
-  type(Field_Type), target :: flow
-  type(Turb_Type),  target :: turb
-  type(Swarm_Type), target :: swarm
-  integer                  :: n, n_stat_p     ! time step
-  real                     :: time            ! physical time
+  type(Field_Type),      target     :: flow
+  type(Turb_Type),       target     :: turb
+  type(Multiphase_Type), target     :: mult
+  type(Swarm_Type),      target     :: swarm
+  integer,               intent(in) :: n               ! current time step
+  real,                  intent(in) :: time            ! physical time
 !----------------------------------[Locals]------------------------------------!
-  integer                        :: i, j, k
-  real                           :: L1, L2, L3             ! domain dimensions 
+  integer                        :: i, j, k, n_stat_p, r, s
+  real                           :: l1, l2, l3             ! domain dimensions 
   real                           :: c1, c2, c3             ! random variables 
-!  integer, parameter             :: N_P     =    16        ! number of particles
   type(Var_Type),  pointer       :: u, v, w, t
   type(Grid_Type), pointer       :: grid
   integer                        :: c, eddy, dir, npb = 0
@@ -39,6 +38,8 @@
   w    => flow % w
   t    => flow % t
 
+  call Control_Mod_Starting_Time_Step_For_Swarm_Statistics &
+       (n_stat_p, verbose=.true.)
 
   !----------------------!
   !                      !
@@ -52,16 +53,14 @@
   c3 = 1.0
 
   ! domain size 
-  L1 = 6.28 !streamwise 
-  L2 = 3.14 !spanwise
-  L3 = 2.0  !wall-normal
-
-!  print *, 'End_Of_Time_Step; cnt_d = ', swarm % cnt_d
+  l1 = 6.28 !streamwise 
+  l2 = 3.14 !spanwise
+  l3 = 2.0  !wall-normal
 
   !-------------------!
   !   1st time step   !
   !-------------------!
-  if(n .eq. 340010) then     ! should be after the flow is developed
+  if(n .eq. 340001) then     ! should be after the flow is developed
 
     ! Initializing both deposition and departure counters
     swarm % cnt_d = 0
@@ -82,9 +81,9 @@
         call random_number(c3)
 
         ! Initalizing particle position
-        swarm % particle(k) % x_n = (L1 * c1) + swarm % particle(k) % x_n
-        swarm % particle(k) % y_n = (L2 * c2) + swarm % particle(k) % y_n
-        swarm % particle(k) % z_n = (L3 * c3) + swarm % particle(k) % z_n
+        swarm % particle(k) % x_n = (l1 * c1) + swarm % particle(k) % x_n
+        swarm % particle(k) % y_n = (l2 * c2) + swarm % particle(k) % y_n
+        swarm % particle(k) % z_n = (l3 * c3) + swarm % particle(k) % z_n
 
         ! you essentially moved them a lot (from 0, 0, 0)
         swarm % particle(k) % cell = 0
@@ -96,7 +95,7 @@
         swarm % particle(k) % y_o = swarm % particle(k) % y_n
         swarm % particle(k) % z_o = swarm % particle(k) % z_n
 
-        ! Searching for the closest cell and node to place the moved particle
+       ! ! Searching for the closest cell and node to place the moved particle
         call Swarm_Mod_Find_Nearest_Cell(swarm, k, npb)
         call Swarm_Mod_Find_Nearest_Node(swarm, k)
 
@@ -132,19 +131,19 @@
   !----------------------!
   !   2nd time step on   !
   !----------------------!
-  if(n .gt. 340010) then     ! should be started after the flow is fully developed
-    call Swarm_Mod_Advance_Particles(swarm, turb, n_stat_p, n)
+  if(n .gt. 340001) then     ! should be started after the flow is fully developed
+    call Swarm_Mod_Advance_Particles(swarm, turb, n, n_stat_p)
   end if
 
+!>>>>>>>>>> off just for the moment for clarity
   if(this_proc < 2) then
     write(*,'(a,i4,a,i4,a,i4,a,i4)')                 &
              " # particles: ", swarm % n_particles,  &
              " trapped:   ",   swarm % cnt_d,        &
              " escaped:   ",   swarm % cnt_e,        &
              " reflected: ",   swarm % cnt_r
-!    print *, 'particle statistics begins at: ', n_stat_p
-!    stop
   end if
+!<<<<<<<<<<
 
   !------------------------!
   !                        !
