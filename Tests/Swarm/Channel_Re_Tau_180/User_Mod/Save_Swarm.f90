@@ -1,5 +1,5 @@
 !==============================================================================!
-   subroutine User_Mod_Save_Swarm(flow, turb, swarm) 
+   subroutine User_Mod_Save_Swarm(flow, turb, mult, swarm, n) 
 !------------------------------------------------------------------------------!
 !   This subroutine reads name.1d file created by Convert or Generator and     !
 !   averages the results for paerticles in homogeneous directions.             !
@@ -10,8 +10,7 @@
   use Const_Mod                      ! constants
   use Comm_Mod                       ! parallel stuff
   use Grid_Mod,  only: Grid_Type
-  use Field_Mod, only: Field_Type, heat_transfer, heat_flux, heat, &
-                       capacity, conductivity, heated_area 
+  use Field_Mod, only: Field_Type
   use Bulk_Mod,  only: Bulk_Type
   use Var_Mod,   only: Var_Type
   use File_Mod,  only: problem_name
@@ -20,45 +19,60 @@
 !------------------------------------------------------------------------------!
   implicit none
 !---------------------------------[Arguments]----------------------------------!
-  type(Field_Type), target :: flow
-  type(Turb_Type),  target :: turb
-  type(Swarm_Type), target :: swarm
-  type(Particle_Type), pointer :: part
+  type(Field_Type),       target  :: flow
+  type(Turb_Type),        target  :: turb
+  type(Multiphase_Type),  target  :: mult
+  type(Swarm_Type),       target  :: swarm
+  integer                         :: n      ! current time step
 !-----------------------------------[Locals]-----------------------------------!
-  type(Var_Type),  pointer :: u, v, w, t
-  type(Grid_Type), pointer :: grid
-  type(Bulk_Type), pointer :: bulk
-  integer                  :: n_prob, pl, c, i, count, s, c1, c2, n_points, k
-  integer                  :: index_p, j, ip, counter, blabla, ip0, ip01
-  integer                  :: ip1, ip2, counter_k, l, n_ss, kk, counter_kk 
-  integer                  :: label, counter1, counter2, fu1, fu2
-  character(len=80)        :: coord_name, result_name, result_name_plus
-  character(len=80)        :: swarm_result_name, swarm_result_name_plus
-  character(len=80)        :: store_name
-  real, allocatable        :: z_p(:), u_p(:), v_p(:), w_p(:), t_p(:),      &
-                              ind(:),  wall_p(:), kin_p(:), eps_p(:),      &
-                              uw_pp(:), uu_pp(:), vv_pp(:), ww_pp(:),      &
-                              u_pp(:), v_pp(:), w_pp(:)
-  integer, allocatable     :: n_p(:), n_count1(:), n_count2(:), store(:)
-  integer, allocatable     :: n_states(:)
-  real                     :: t_wall, t_tau, d_wall, nu_mean, t_inf
-  real                     :: ubulk, re, cf_dean, cf, pr, u_tau_p, temp
-  real                     :: temp_p1, temp_pp, temp_p2, slice, sslice_l 
-  real                     :: sslice_u, sslice_diff, temp_kk
-  real                     :: density_const, visc_const
-  logical                  :: there, flag
+  type(Var_Type),  pointer  :: u, v, w, t
+  type(Grid_Type), pointer  :: grid
+  type(Bulk_Type), pointer  :: bulk
+!  type(Swarm_Type), pointer :: u_pp, v_pp, w_pp, uu_pp, vv_pp, ww_pp, &
+!                               uv_pp, uw_pp, vw_pp 
+  integer                   :: n_prob, pl, c, i, count, s, c1, c2, n_points, k
+  integer                   :: index_p, j, ip, counter, blabla, ip0, ip01
+  integer                   :: ip1, ip2, counter_k, l, n_ss, kk, counter_kk 
+  integer                   :: label, counter1, counter2, fu1, fu2
+  integer                   :: nb, nc 
+  character(len=80)         :: coord_name, result_name, result_name_plus
+  character(len=80)         :: swarm_result_name, swarm_result_name_plus
+  character(len=80)         :: store_name
+  real, allocatable         :: z_p(:), u_p(:), v_p(:), w_p(:), t_p(:),      &
+                              ind(:), wall_p(:), kin_p(:), eps_p(:),        &
+                              uw_pp(:), uu_pp(:), vv_pp(:), ww_pp(:),       &
+                              u_pp(:), v_pp(:), w_pp(:), vw_pp(:), uv_pp(:) 
+  integer, allocatable      :: n_p(:), n_count1(:), n_count2(:), store(:)
+  integer, allocatable      :: n_states(:)
+  real                      :: t_wall, t_tau, d_wall, nu_mean, t_inf
+  real                      :: ubulk, re, cf_dean, cf, pr, u_tau_p, temp
+  real                      :: temp_p1, temp_pp, temp_p2, slice, sslice_l 
+  real                      :: sslice_u, sslice_diff, temp_kk
+  real                      :: density_const, visc_const
+  logical                   :: there, flag
 !==============================================================================!
 
 
-  ! Take aliases
+  ! Take aliases for the flow 
   grid => flow % pnt_grid
   bulk => flow % bulk
   call Field_Mod_Alias_Momentum(flow, u, v, w)
   call Field_Mod_Alias_Energy  (flow, t)
 
+  ! Take aliases for swarm
+!  u_pp  => swarm % u_mean
+!  v_pp  => swarm % v_mean
+!  w_pp  => swarm % w_mean
+!  uu_pp => swarm % uu
+!  vv_pp => swarm % vv
+!  ww_pp => swarm % ww
+!  uv_pp => swarm % uv
+!  uw_pp => swarm % uw
+!  vw_pp => swarm % vw
+
   ! constant fluid properties for single phase
-  visc_const      = maxval(viscosity(:))
-  density_const   = maxval(density(:))
+  visc_const      = maxval(flow % viscosity(:))
+  density_const   = maxval(flow % density(:))
 
   ! Set the name for coordinate file
   call File_Mod_Set_Name(coord_name, extension='.1d')
@@ -113,29 +127,34 @@
   close(9)
 
   ! Primary flow arrays:
-  allocate(n_p    (swarm % n_particles));   n_p      = 0
-  allocate(wall_p (swarm % n_particles));   wall_p   = 0.0
-  allocate(u_p    (swarm % n_particles));   u_p      = 0.0
-  allocate(v_p    (swarm % n_particles));   v_p      = 0.0
-  allocate(w_p    (swarm % n_particles));   w_p      = 0.0
+  allocate(n_p    (n_prob));   n_p      = 0
+  allocate(wall_p (n_prob));   wall_p   = 0.0
+  allocate(u_p    (n_prob));   u_p      = 0.0
+  allocate(v_p    (n_prob));   v_p      = 0.0
+  allocate(w_p    (n_prob));   w_p      = 0.0
 
+  nb = turb % pnt_grid % n_bnd_cells                                            
+  nc = turb % pnt_grid % n_cells
   ! Discrete phase arrays:
-  allocate(u_pp      (swarm % n_particles));   u_pp        = 0.0
-  allocate(v_pp      (swarm % n_particles));   v_pp        = 0.0
-  allocate(w_pp      (swarm % n_particles));   w_pp        = 0.0
-  allocate(uu_pp     (swarm % n_particles));   uu_pp       = 0.0
-  allocate(vv_pp     (swarm % n_particles));   vv_pp       = 0.0
-  allocate(ww_pp     (swarm % n_particles));   ww_pp       = 0.0
-  allocate(uw_pp     (swarm % n_particles));   uw_pp       = 0.0
-  ! What if n_states>n_particles?!
-  allocate(n_states  (swarm % n_particles));   n_states    = 0
+  allocate(u_pp      (-nb:nc));   u_pp        = 0.0
+  allocate(v_pp      (-nb:nc));   v_pp        = 0.0
+  allocate(w_pp      (-nb:nc));   w_pp        = 0.0
+  allocate(uu_pp     (-nb:nc));   uu_pp       = 0.0
+  allocate(vv_pp     (-nb:nc));   vv_pp       = 0.0
+  allocate(ww_pp     (-nb:nc));   ww_pp       = 0.0
+  allocate(uw_pp     (-nb:nc));   uw_pp       = 0.0
 
-  allocate(n_count2(swarm % n_particles)); n_count2 = 0
+  ! What if n_states>n_particles?!
+  allocate(n_states  (-nb:nc));   n_states    = 0
+
+  allocate(n_count2(n_prob)); n_count2 = 0
   count = 0
 
   !--------------- ------!
   !   Swarm statistics   !
   !----------------------!
+
+  ! Do we really need to browse through all the grid here?!
   do i = 1, n_prob-1
     do c = 1, grid % n_cells - grid % comm % n_buff_cells 
       if(grid % zc(c) > (z_p(i)) .and.  &
@@ -207,16 +226,16 @@
    
     ! Particle-related 
     ! to be devided by n_states instead
-    if(n_count1(i) .ne. 0) then
+    if(n_states(i) .ne. 0) then
 
-      u_pp(i) = u_pp(i) / n_states(i)
-      v_pp(i) = v_pp(i) / n_states(i)
-      w_pp(i) = w_pp(i) / n_states(i)
+      u_pp(i)  = u_pp(i) / (1.*n_states(i))
+      v_pp(i)  = v_pp(i) / (1.*n_states(i))
+      w_pp(i)  = w_pp(i) / (1.*n_states(i))
 
-      uu_pp(i) = uu_pp(i) / n_states(i)
-      vv_pp(i) = vv_pp(i) / n_states(i)
-      ww_pp(i) = ww_pp(i) / n_states(i)
-      uw_pp(i) = uw_pp(i) / n_states(i)
+      uu_pp(i) = uu_pp(i) / (1.*n_states(i))
+      vv_pp(i) = vv_pp(i) / (1.*n_states(i))
+      ww_pp(i) = ww_pp(i) / (1.*n_states(i))
+      uw_pp(i) = uw_pp(i) / (1.*n_states(i))
 
     end if
   end do
@@ -229,12 +248,12 @@
 
   ! Calculating friction velocity and friction temperature  (For the flow!)
     u_tau_p = sqrt( (visc_const*sqrt(u_p(1)**2 +   &
-                                    v_p(1)**2 +   &
-                                    w_p(1)**2)/ wall_p(1)))
+                                     v_p(1)**2 +   &
+                                     w_p(1)**2)/ wall_p(1)))
   open(fu1, file = swarm_result_name)
   open(fu2, file = swarm_result_name_plus)
 
-    pr = visc_const * capacity / conductivity
+!    pr = visc_const * capacity / conductivity
     re = density_const * ubulk * 2.0/visc_const
     cf_dean = 0.073*(re)**(-0.25)
     cf      = u_tau_p**2/(0.5*ubulk**2)
@@ -264,13 +283,13 @@
     '#', 'Utau     = ', u_tau_p 
 
 
-      write(fu1,'(a1,2x,a50)') '#',  ' z,'                  //  &  !  1
+      write(fu1,'(a1,2x,a50)') '#',' z,'                    //  &  !  1
                                    ' u,'                    //  &  !  2
                                    ' uu, vv, ww, uw'        //  &  !  3 -  6
                                    ' kin'                          !  7
 
 
-      write(fu2,'(a1,2x,a50)') '#',  ' z,'                  //  &  !  1
+      write(fu2,'(a1,2x,a50)') '#',' z,'                    //  &  !  1
                                    ' u,'                    //  &  !  2
                                    ' uu, vv, ww, uw'        //  &  !  3 -  6
                                    ' kin'                          !  7
@@ -326,6 +345,8 @@
   deallocate(vv_pp)
   deallocate(ww_pp)
   deallocate(uw_pp)
+  deallocate(n_states)
+  deallocate(ind)
 
   if(this_proc < 2)  print *, '# Finished with User_Mod_Save_Swarm.f90.'
 
