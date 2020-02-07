@@ -92,7 +92,7 @@
 
     ! Refresh the alias
     part => swarm % particle(k)
-    
+
     if(this_proc .eq. part % proc) then
       ! Printing particle position
       write(*,'(a,i7,a,i7,a,i2,a,3es15.6,a,es12.4)')                 &

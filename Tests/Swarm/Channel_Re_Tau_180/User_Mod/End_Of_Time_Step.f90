@@ -19,7 +19,7 @@
   integer,               intent(in) :: n               ! current time step
   real,                  intent(in) :: time            ! physical time
 !----------------------------------[Locals]------------------------------------!
-  integer                        :: i, j, k, n_stat_p, r, s
+  integer                        :: i, j, k, r, s
   real                           :: l1, l2, l3             ! domain dimensions 
   real                           :: c1, c2, c3             ! random variables 
   type(Var_Type),  pointer       :: u, v, w, t
@@ -37,9 +37,6 @@
   v    => flow % v
   w    => flow % w
   t    => flow % t
-
-  call Control_Mod_Starting_Time_Step_For_Swarm_Statistics &
-       (n_stat_p, verbose=.true.)
 
   !----------------------!
   !                      !
@@ -131,8 +128,8 @@
   !----------------------!
   !   2nd time step on   !
   !----------------------!
-  if(n .gt. 340001) then     ! should be started after the flow is fully developed
-    call Swarm_Mod_Advance_Particles(swarm, turb, n, n_stat_p)
+  if(n .gt. 340001) then   ! should be started after the flow is fully developed
+    call Swarm_Mod_Advance_Particles(swarm, turb, n)
   end if
 
 !>>>>>>>>>> off just for the moment for clarity
